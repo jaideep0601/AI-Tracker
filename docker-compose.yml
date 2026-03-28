@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: thinkstream_db
+    environment:
+      POSTGRES_USER: thinkstream
+      POSTGRES_PASSWORD: thinkstream_dev_password
+      POSTGRES_DB: thinkstream
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - thinkstream_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thinkstream"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: thinkstream_cache
+    ports:
+      - "6379:6379"
+    networks:
+      - thinkstream_network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: thinkstream_api
+    environment:
+      DATABASE_URL: postgresql://thinkstream:thinkstream_dev_password@postgres:5432/thinkstream
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      DEBUG: "true"
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - thinkstream_network
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Celery Worker (Background Jobs)
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: thinkstream_worker
+    environment:
+      DATABASE_URL: postgresql://thinkstream:thinkstream_dev_password@postgres:5432/thinkstream
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      ENVIRONMENT: development
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - thinkstream_network
+    volumes:
+      - ./backend:/app
+    command: celery -A tasks worker --loglevel=info --concurrency=4
+    profiles:
+      - background_jobs  # Run with: docker-compose --profile background_jobs up
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: thinkstream_app
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - thinkstream_network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev
+
+networks:
+  thinkstream_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
