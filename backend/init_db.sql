@@ -50,13 +50,6 @@ CREATE TABLE IF NOT EXISTS user_feedback (
     UNIQUE (article_id)
 );
 
-CREATE TABLE IF NOT EXISTS bookmarks (
-    id SERIAL PRIMARY KEY,
-    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT now(),
-    UNIQUE (article_id)
-);
-
 -- Insert sample sources
 INSERT INTO sources (name, type, url, rating, active, created_at, updated_at) VALUES
 ('OpenAI Blog', 'blog', 'https://openai.com/blog', 5, true, NOW(), NOW()),

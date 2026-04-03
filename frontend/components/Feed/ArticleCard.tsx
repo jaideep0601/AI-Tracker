@@ -1,12 +1,5 @@
 import React, { useState } from 'react'
-import {
-  ThumbsUp,
-  ThumbsDown,
-  Calendar,
-  User,
-  Tag,
-  Bookmark,
-} from 'lucide-react'
+import { ThumbsUp, ThumbsDown, Calendar, User, Tag } from 'lucide-react'
 import axios from 'axios'
 
 interface Article {
@@ -17,7 +10,7 @@ interface Article {
   category: string
   author: string
   published_at: string
-  source?: {
+  source: {
     id: number
     name: string
     rating: number
@@ -26,24 +19,16 @@ interface Article {
 
 interface ArticleCardProps {
   article: Article
-  bookmarked: boolean
-  onBookmarkChange: (articleId: number, saved: boolean) => void
 }
 
-export default function ArticleCard({
-  article,
-  bookmarked,
-  onBookmarkChange,
-}: ArticleCardProps) {
+export default function ArticleCard({ article }: ArticleCardProps) {
   const [feedback, setFeedback] = useState<1 | -1 | 0>(0)
   const [loading, setLoading] = useState(false)
-  const [bmLoading, setBmLoading] = useState(false)
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 
   const handleFeedback = async (value: 1 | -1) => {
     setLoading(true)
     try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
       await axios.put(`${apiUrl}/feedback/${article.id}`, {
         feedback: value,
       })
@@ -55,30 +40,11 @@ export default function ArticleCard({
     }
   }
 
-  const toggleBookmark = async () => {
-    setBmLoading(true)
-    try {
-      if (bookmarked) {
-        await axios.delete(`${apiUrl}/bookmarks/${article.id}`)
-        onBookmarkChange(article.id, false)
-      } else {
-        await axios.post(`${apiUrl}/bookmarks/${article.id}`)
-        onBookmarkChange(article.id, true)
-      }
-    } catch (error) {
-      console.error('Bookmark failed:', error)
-    } finally {
-      setBmLoading(false)
-    }
-  }
-
-  const publicationDate = article.published_at
-    ? new Date(article.published_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : '—'
+  const publicationDate = new Date(article.published_at).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 
   const getStarRating = (rating: number) => {
     return '★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating))
@@ -86,8 +52,9 @@ export default function ArticleCard({
 
   return (
     <div className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6">
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="flex-1 min-w-0">
+      {/* Header with source info */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
           <a
             href={article.url}
             target="_blank"
@@ -97,36 +64,16 @@ export default function ArticleCard({
             {article.title}
           </a>
           <div className="flex flex-wrap gap-3 text-sm text-gray-600">
-            <span className="font-semibold text-gray-800">
-              {article.source?.name ?? 'Unknown source'}
-            </span>
-            {article.source && (
-              <span className="text-yellow-500">
-                {getStarRating(article.source.rating)}
-              </span>
-            )}
+            <span className="font-semibold text-gray-800">{article.source.name}</span>
+            <span className="text-yellow-500">{getStarRating(article.source.rating)}</span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={toggleBookmark}
-          disabled={bmLoading}
-          title={bookmarked ? 'Remove bookmark' : 'Save article'}
-          className={`shrink-0 p-2 rounded-lg border transition ${
-            bookmarked
-              ? 'bg-amber-100 border-amber-300 text-amber-800'
-              : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-          } ${bmLoading ? 'opacity-50' : ''}`}
-        >
-          <Bookmark
-            size={22}
-            className={bookmarked ? 'fill-amber-600 text-amber-800' : ''}
-          />
-        </button>
       </div>
 
+      {/* Content preview */}
       <p className="text-gray-700 mb-4 line-clamp-3">{article.content}</p>
 
+      {/* Metadata */}
       <div className="flex flex-wrap gap-4 mb-4 text-sm text-gray-600">
         <div className="flex items-center gap-1">
           <Tag size={16} />
@@ -146,9 +93,9 @@ export default function ArticleCard({
         )}
       </div>
 
-      <div className="flex gap-3 items-center border-t pt-4 flex-wrap">
+      {/* Feedback buttons */}
+      <div className="flex gap-3 items-center border-t pt-4">
         <button
-          type="button"
           onClick={() => handleFeedback(1)}
           disabled={loading}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
@@ -161,7 +108,6 @@ export default function ArticleCard({
           <span>Helpful</span>
         </button>
         <button
-          type="button"
           onClick={() => handleFeedback(-1)}
           disabled={loading}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
@@ -171,7 +117,7 @@ export default function ArticleCard({
           } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <ThumbsDown size={18} />
-          <span>Not helpful</span>
+          <span>Not Helpful</span>
         </button>
         <a
           href={article.url}
@@ -179,7 +125,7 @@ export default function ArticleCard({
           rel="noopener noreferrer"
           className="ml-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
         >
-          Read more →
+          Read More →
         </a>
       </div>
     </div>
