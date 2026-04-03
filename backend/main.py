@@ -10,7 +10,7 @@ from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from models import Base, Source, Article, UserFeedback
@@ -19,6 +19,7 @@ from schemas import (
     FeedResponse, CategoryResponse
 )
 from config import settings
+from routers.auth import router as auth_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -58,7 +59,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
+app.include_router(auth_router)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -87,7 +88,7 @@ async def health_check():
 async def health_check_db(db: Session = Depends(get_db)):
     """Database health check"""
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
@@ -175,7 +176,7 @@ async def search_articles(
         articles = query.offset(skip).limit(limit).all()
         
         return {
-            "results": [ArticleResponse.from_orm(a) for a in articles],
+            "data": [ArticleResponse.from_orm(a) for a in articles],
             "query": q,
             "total_hits": total_count,
             "page": page,

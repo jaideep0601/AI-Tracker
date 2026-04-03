@@ -69,6 +69,16 @@ class UserFeedback(Base):
     article = relationship("Article", back_populates="feedbacks")
 
 
+class Bookmark(Base):
+    """Saved article (single-user MVP)."""
+
+    __tablename__ = "bookmarks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    article_id = Column(Integer, ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, unique=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+
 class SourceRating(Base):
     __tablename__ = "source_ratings"
     
