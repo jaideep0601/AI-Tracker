@@ -8,11 +8,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional, List
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from jobs import run_scheduled_source_fetch
 from models import Base, Source, Article, UserFeedback
 from schemas import (
     SourceResponse, ArticleResponse, FeedbackRequest, 
@@ -24,6 +26,7 @@ from routers.auth import router as auth_router
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+scheduler = BackgroundScheduler(timezone="UTC")
 
 # Database setup
 engine = create_engine(str(settings.DATABASE_URL), echo=False)
@@ -48,7 +51,32 @@ async def lifespan(app: FastAPI):
     logger.info("ThinkStream API starting up...")
     logger.info(f"Database: {settings.DATABASE_URL}")
     logger.info(f"Redis: {settings.REDIS_URL}")
+    if settings.ENABLE_SCHEDULER:
+        scheduler.add_job(
+            run_scheduled_source_fetch,
+            "date",
+            args=[SessionLocal],
+            id="startup_source_fetch",
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            run_scheduled_source_fetch,
+            "interval",
+            hours=settings.FETCH_INTERVAL_HOURS,
+            args=[SessionLocal],
+            id="scheduled_source_fetch",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.start()
+        logger.info(
+            "Source ingestion scheduler enabled; fetching every %s hour(s)",
+            settings.FETCH_INTERVAL_HOURS,
+        )
     yield
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
     logger.info("ThinkStream API shutting down...")
 
 
@@ -453,3 +481,4 @@ async def get_top_sources(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

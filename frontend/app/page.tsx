@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type User = { email: string; name: string };
@@ -18,7 +18,7 @@ const categories = [
   { id: "all",       label: "All",       icon: "◈" },
   { id: "research",  label: "Research",  icon: "⬡" },
   { id: "models",    label: "Models",    icon: "◉" },
-  { id: "development", label: "Development", icon: "◫" },
+  { id: "github",    label: "GitHub",    icon: "◫" },
   { id: "social",    label: "Social",    icon: "◎" },
   { id: "companies", label: "Companies", icon: "◪" },
   { id: "events",    label: "Events",    icon: "◷" },
@@ -93,11 +93,8 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to send OTP");
       setStep("otp");
-      setInfo(
-        data.delivery === "console"
-          ? `Code generated for ${email}. Check the backend console in development.`
-          : `Code sent to ${email}`
-      );
+      setInfo(`Code sent to ${email}`);
+      if (data.dev_otp) setOtp(data.dev_otp);
     } catch(e: unknown) { setError(e instanceof Error ? e.message : "Error sending OTP"); }
     finally { setLoading(false); }
   };
@@ -278,7 +275,7 @@ function DiscoverTab({ user }: { user: User }) {
     try {
       const res = await fetch(`${API}/api/feed/search?q=${encodeURIComponent(q)}&limit=20`);
       const data = await res.json();
-      setResults(data.data || data.results || []);
+      setResults(data.data || data || []);
     } catch { setResults([]); }
     finally { setLoading(false); }
     const next = [q, ...history.filter(h=>h!==q)].slice(0,20);
@@ -353,7 +350,7 @@ function DiscoverTab({ user }: { user: User }) {
 function SettingsTab({ user, onLogout }: { user: User; onLogout:()=>void }) {
   const [name,  setName]  = useState(user.name);
   const [saved, setSaved] = useState(false);
-  const [stats, setStats] = useState({ total_articles: 0, total_sources: 0 });
+  const [stats, setStats] = useState({ total:0, sources:0 });
 
   useEffect(() => {
     fetch(`${API}/api/analytics/stats`).then(r=>r.json()).then(d=>setStats(d)).catch(()=>{});
@@ -398,8 +395,8 @@ function SettingsTab({ user, onLogout }: { user: User; onLogout:()=>void }) {
         <div style={{ fontSize:11, fontFamily:"var(--font-mono)", color:"var(--text3)", letterSpacing:"0.06em", marginBottom:16 }}>FEED STATS</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
           {[
-            { label:"Articles",  value: stats.total_articles, color:"var(--accent)" },
-            { label:"Sources",   value: stats.total_sources,  color:"var(--green)"  },
+            { label:"Articles",  value: stats.total,        color:"var(--accent)" },
+            { label:"Sources",   value: stats.sources,      color:"var(--green)"  },
             { label:"Searches",  value: searchHistory.length, color:"var(--amber)" },
           ].map(s=>(
             <div key={s.label} style={{ background:"var(--bg2)", border:"0.5px solid var(--border)", borderRadius:8, padding:"12px 14px" }}>
@@ -495,53 +492,27 @@ export default function App() {
   const [activeTab,      setActiveTab]      = useState("feed");
   const [showBookmarks,  setShowBookmarks]  = useState(false);
   const [mobileOpen,     setMobileOpen]     = useState(false);
-  const [theme,          setTheme]          = useState<"dark"|"light">("dark");
+const [theme,          setTheme]          = useState<"dark"|"light">("dark");
+
+useEffect(() => {
+  const saved = localStorage.getItem("ts_theme") as "dark"|"light" || "dark";
+  setTheme(saved);
+  document.documentElement.setAttribute("data-theme", saved);
+}, []);
+
+function toggleTheme() {
+  const next = theme === "dark" ? "light" : "dark";
+  setTheme(next);
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("ts_theme", next);
+}
   const [bookmarks,      setBookmarks]      = useState<Set<number>>(new Set());
   const [likes,          setLikes]          = useState<Map<number,boolean>>(new Map());
-  const bookmarksRef = useRef(bookmarks);
-  const likesRef = useRef(likes);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("ts_theme") as "dark"|"light" || "dark";
-    setTheme(saved);
-    document.documentElement.setAttribute("data-theme", saved);
-  }, []);
-
-  function toggleTheme() {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.setAttribute("data-theme", next);
-    localStorage.setItem("ts_theme", next);
-  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try { const r = localStorage.getItem("ts_user"); if (r) setUser(JSON.parse(r)); } catch {}
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    setBookmarks(new Set(loadLocal<number[]>(user.email, "bookmarks", [])));
-    setLikes(new Map(loadLocal<[number, boolean][]>(user.email, "likes", [])));
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    saveLocal(user.email, "bookmarks", Array.from(bookmarks));
-  }, [user, bookmarks]);
-
-  useEffect(() => {
-    if (!user) return;
-    saveLocal(user.email, "likes", Array.from(likes.entries()));
-  }, [user, likes]);
-
-  useEffect(() => {
-    bookmarksRef.current = bookmarks;
-  }, [bookmarks]);
-
-  useEffect(() => {
-    likesRef.current = likes;
-  }, [likes]);
 
   const fetchFeed = useCallback(async (page=1, category="all", replace=true) => {
     if (page===1) setLoading(true); else setLoadingMore(true);
@@ -550,25 +521,26 @@ export default function App() {
       const res = await fetch(`${API}/api/feed?page=${page}&limit=20${catParam}`);
       const data = await res.json();
       const items: FeedItem[] = (data.data||[]).map((item: FeedItem) => ({
-        ...item,
-        liked: likesRef.current.get(item.id) ?? null,
-        bookmarked: bookmarksRef.current.has(item.id),
+        ...item, liked: likes.get(item.id) ?? null, bookmarked: bookmarks.has(item.id),
       }));
       setFeed(prev => replace ? items : [...prev, ...items]);
       setPagination(data.pagination || { page, limit:20, total_count:items.length, total_pages:1 });
     } catch(e) { console.error(e); }
     finally { setLoading(false); setLoadingMore(false); }
-  }, []);
+  }, [likes, bookmarks]);
 
   useEffect(() => { if (user) fetchFeed(1, activeCategory, true); }, [user, activeCategory, fetchFeed]);
 
+  useEffect(() => {
+    if (!user || activeTab !== "feed") return;
+    const intervalId = window.setInterval(() => {
+      fetchFeed(1, activeCategory, true);
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [user, activeTab, activeCategory, fetchFeed]);
+
   function handleLike(id: number, liked: boolean) {
-    setLikes(m => {
-      const n = new Map(m);
-      if (m.get(id) === liked) n.delete(id);
-      else n.set(id, liked);
-      return n;
-    });
+    setLikes(m => { const n = new Map(m); n.set(id, m.get(id)===liked ? undefined as any : liked); return n; });
     setFeed(f => f.map(i => i.id===id ? {...i, liked: i.liked===liked ? null : liked} : i));
   }
 
@@ -613,7 +585,9 @@ export default function App() {
 
         <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0 }}>
           <div style={{ position:"sticky", top:0, zIndex:40, background:"rgba(8,11,15,0.92)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderBottom:"0.5px solid var(--border)", padding:"12px 20px", display:"flex", alignItems:"center", gap:12 }}>
-            <button onClick={toggleTheme} style={{ background:"var(--surface)", border:"0.5px solid var(--border)", borderRadius:8, padding:"7px 10px", color:"var(--text2)", cursor:"pointer", fontSize:14, marginLeft:"auto" }}>{theme === "dark" ? "??" : "??"}</button>
+            <button onClick={toggleTheme} style={{ background:"var(--surface)", border:"0.5px solid var(--border)", borderRadius:8, padding:"7px 10px", color:"var(--text2)", cursor:"pointer", fontSize:14, marginLeft:"auto" }}>
+  {theme === "dark" ? "☀️" : "🌙"}
+</button>
             <button className="mob-btn" onClick={()=>setMobileOpen(true)} style={{ background:"var(--surface)", border:"0.5px solid var(--border)", borderRadius:8, padding:"7px 12px", color:"var(--text2)", cursor:"pointer", fontSize:15 }}>☰</button>
 
             {activeTab==="feed" && <>
@@ -673,5 +647,4 @@ export default function App() {
     </>
   );
 }
-
 

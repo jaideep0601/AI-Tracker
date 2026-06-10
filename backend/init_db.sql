@@ -1,11 +1,11 @@
 -- Initialize ThinkStream Database
--- This script creates the initial schema and seed data
+-- This script creates the initial schema and seed source data.
 
 -- Create extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- If the schema does not exist yet (pre-initialization), create required tables here
--- so that the seed data insertion works on fresh Docker container startup.
+-- If the schema does not exist yet, create required tables here
+-- so source seeding works on fresh Docker container startup.
 
 CREATE TABLE IF NOT EXISTS sources (
     id SERIAL PRIMARY KEY,
@@ -50,99 +50,47 @@ CREATE TABLE IF NOT EXISTS user_feedback (
     UNIQUE (article_id)
 );
 
--- Insert sample sources
+-- Remove old demo/sample articles if this script is run manually on an existing DB.
+DELETE FROM articles
+WHERE url LIKE 'https://example.com/%'
+   OR external_id LIKE 'sample-%';
+
+-- Seed real sources that the current ingestion code can fetch.
+-- Supported types:
+-- rss/blog: RSS or Atom feed discovery
+-- arxiv: arXiv public API
+-- github: GitHub repository releases Atom feed
+-- reddit: public subreddit JSON feed
+
 INSERT INTO sources (name, type, url, rating, active, created_at, updated_at) VALUES
-('OpenAI Blog', 'blog', 'https://openai.com/blog', 5, true, NOW(), NOW()),
-('DeepMind Blog', 'blog', 'https://deepmind.com/blog', 5, true, NOW(), NOW()),
-('Anthropic', 'blog', 'https://www.anthropic.com/news', 5, true, NOW(), NOW()),
-('arXiv CS', 'arxiv', 'https://arxiv.org/list/cs/recent', 5, true, NOW(), NOW()),
-('Papers with Code', 'rss', 'https://paperswithcode.com', 5, true, NOW(), NOW()),
-('GitHub Trending', 'github', 'https://github.com/trending', 4, true, NOW(), NOW()),
-('@karpathy', 'twitter', 'https://twitter.com/karpathy', 5, true, NOW(), NOW()),
-('@ylecun', 'twitter', 'https://twitter.com/ylecun', 5, true, NOW(), NOW()),
+('OpenAI News', 'rss', 'https://openai.com/news/rss.xml', 5, true, NOW(), NOW()),
+('Google DeepMind Blog', 'blog', 'https://deepmind.google/blog', 5, true, NOW(), NOW()),
+('Anthropic News', 'blog', 'https://www.anthropic.com/news', 5, true, NOW(), NOW()),
+('arXiv AI', 'arxiv', 'https://arxiv.org/list/cs.AI/recent', 5, true, NOW(), NOW()),
+('arXiv Machine Learning', 'arxiv', 'https://arxiv.org/list/cs.LG/recent', 5, true, NOW(), NOW()),
+('Papers with Code', 'rss', 'https://paperswithcode.com/rss', 5, true, NOW(), NOW()),
+('Hugging Face Blog', 'rss', 'https://huggingface.co/blog/feed.xml', 5, true, NOW(), NOW()),
+('Transformers Releases', 'github', 'https://github.com/huggingface/transformers', 5, true, NOW(), NOW()),
+('LangChain Releases', 'github', 'https://github.com/langchain-ai/langchain', 4, true, NOW(), NOW()),
 ('r/MachineLearning', 'reddit', 'https://reddit.com/r/MachineLearning', 4, true, NOW(), NOW()),
-('Hugging Face Blog', 'blog', 'https://huggingface.co/blog', 4, true, NOW(), NOW())
-ON CONFLICT (name) DO NOTHING;
+('r/LocalLLaMA', 'reddit', 'https://reddit.com/r/LocalLLaMA', 4, true, NOW(), NOW())
+ON CONFLICT (name) DO UPDATE SET
+    type = EXCLUDED.type,
+    url = EXCLUDED.url,
+    rating = EXCLUDED.rating,
+    active = EXCLUDED.active,
+    updated_at = NOW();
 
--- ============================================================================
--- Insert sample articles (for local testing)
--- ============================================================================
-
-INSERT INTO articles (source_id, external_id, title, content, url, url_hash, category, author, published_at, fetched_at, created_at, updated_at) 
-SELECT 
-    s.id,
-    'sample-1',
-    'Understanding Transformer Architectures',
-    'This article explores the fundamentals of transformer architectures and their applications in modern AI systems...',
-    'https://example.com/article-1',
-    '123abc',
-    'research',
-    'OpenAI Team',
-    NOW() - INTERVAL '2 days',
-    NOW(),
-    NOW(),
-    NOW()
-FROM sources s WHERE s.name = 'OpenAI Blog'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO articles (source_id, external_id, title, content, url, url_hash, category, author, published_at, fetched_at, created_at, updated_at) 
-SELECT 
-    s.id,
-    'sample-2',
-    'AlphaFold 2 Breakthrough',
-    'DeepMind announces major improvements to AlphaFold protein structure prediction...',
-    'https://example.com/article-2',
-    '456def',
-    'research',
-    'DeepMind Team',
-    NOW() - INTERVAL '1 day',
-    NOW(),
-    NOW(),
-    NOW()
-FROM sources s WHERE s.name = 'DeepMind Blog'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO articles (source_id, external_id, title, content, url, url_hash, category, author, published_at, fetched_at, created_at, updated_at) 
-SELECT 
-    s.id,
-    'sample-3',
-    'Claude 2.0 Released',
-    'Anthropic releases Claude 2.0 with improved capabilities...',
-    'https://example.com/article-3',
-    '789ghi',
-    'models',
-    'Anthropic Team',
-    NOW(),
-    NOW(),
-    NOW(),
-    NOW()
-FROM sources s WHERE s.name = 'Anthropic'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO articles (source_id, external_id, title, content, url, url_hash, category, author, published_at, fetched_at, created_at, updated_at) 
-SELECT 
-    s.id,
-    'sample-4',
-    'Neural Network Pruning Techniques',
-    'A comprehensive review of modern neural network pruning approaches...',
-    'https://example.com/article-4',
-    '101jkl',
-    'development',
-    'Research Team',
-    NOW() - INTERVAL '3 days',
-    NOW(),
-    NOW(),
-    NOW()
-FROM sources s WHERE s.name = 'arXiv CS'
-ON CONFLICT DO NOTHING;
-
--- Add some sample feedback
-INSERT INTO user_feedback (article_id, feedback, feedback_reason, created_at, updated_at)
-SELECT a.id, 1, 'relevant', NOW(), NOW()
-FROM articles a WHERE a.title = 'Understanding Transformer Architectures'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO user_feedback (article_id, feedback, feedback_reason, created_at, updated_at)
-SELECT a.id, 1, 'relevant', NOW(), NOW()
-FROM articles a WHERE a.title = 'Claude 2.0 Released'
-ON CONFLICT DO NOTHING;
+-- Keep previously unsupported/bad seed sources disabled if they already exist.
+UPDATE sources
+SET active = false,
+    updated_at = NOW()
+WHERE name IN (
+    'OpenAI Blog',
+    'DeepMind Blog',
+    'Anthropic',
+    'GitHub Trending',
+    '@karpathy',
+    '@ylecun',
+    'arXiv CS'
+);
