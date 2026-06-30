@@ -22,6 +22,8 @@
   --font-display: 'Syne', sans-serif;
   --font-body: 'DM Sans', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  /* theme-aware glass background for sticky header */
+  --bg-glass: rgba(8,11,15,0.92);
 }
 
 [data-theme="light"] {
@@ -41,6 +43,7 @@
   --red: #E53E3E;
   --green: #38A169;
   --amber: #D97706;
+  --bg-glass: rgba(245,247,250,0.92);
 }
 
 body {
